@@ -31,6 +31,17 @@ class CakeQosNumberDescription(NumberEntityDescription):
 
 # ── Autorate config tunables ────────────────────────────────────────────
 AUTORATE_NUMBER_DESCRIPTIONS: tuple[CakeQosNumberDescription, ...] = (
+    # -- Download rate envelope --
+    CakeQosNumberDescription(
+        key="min_dl_rate",
+        name="Min download rate",
+        icon="mdi:download-outline",
+        native_min_value=10,
+        native_max_value=200,
+        native_step=10,
+        native_unit_of_measurement="Mbit/s",
+        config_key="min_dl_shaper_rate_kbps",
+    ),
     CakeQosNumberDescription(
         key="base_dl_rate",
         name="Base download rate",
@@ -42,6 +53,27 @@ AUTORATE_NUMBER_DESCRIPTIONS: tuple[CakeQosNumberDescription, ...] = (
         config_key="base_dl_shaper_rate_kbps",
     ),
     CakeQosNumberDescription(
+        key="max_dl_rate",
+        name="Max download rate",
+        icon="mdi:download-circle",
+        native_min_value=50,
+        native_max_value=600,
+        native_step=10,
+        native_unit_of_measurement="Mbit/s",
+        config_key="max_dl_shaper_rate_kbps",
+    ),
+    # -- Upload rate envelope --
+    CakeQosNumberDescription(
+        key="min_ul_rate",
+        name="Min upload rate",
+        icon="mdi:upload-outline",
+        native_min_value=5,
+        native_max_value=100,
+        native_step=5,
+        native_unit_of_measurement="Mbit/s",
+        config_key="min_ul_shaper_rate_kbps",
+    ),
+    CakeQosNumberDescription(
         key="base_ul_rate",
         name="Base upload rate",
         icon="mdi:upload",
@@ -51,6 +83,17 @@ AUTORATE_NUMBER_DESCRIPTIONS: tuple[CakeQosNumberDescription, ...] = (
         native_unit_of_measurement="Mbit/s",
         config_key="base_ul_shaper_rate_kbps",
     ),
+    CakeQosNumberDescription(
+        key="max_ul_rate",
+        name="Max upload rate",
+        icon="mdi:upload-circle",
+        native_min_value=10,
+        native_max_value=200,
+        native_step=5,
+        native_unit_of_measurement="Mbit/s",
+        config_key="max_ul_shaper_rate_kbps",
+    ),
+    # -- Delay thresholds --
     CakeQosNumberDescription(
         key="dl_delay_threshold",
         name="Download delay threshold",
