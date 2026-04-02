@@ -1,0 +1,5 @@
+{
+  "name": "CAKE QoS",
+  "render_readme": true,
+  "domains": ["sensor", "switch", "number", "button"]
+}

@@ -1,0 +1,11 @@
+{
+  "domain": "cake_qos",
+  "name": "CAKE QoS",
+  "codeowners": ["@bernhardberger"],
+  "config_flow": true,
+  "documentation": "https://github.com/bernhardberger/cake-qos-home-assistant",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "requirements": ["aiohttp>=3.8"],
+  "version": "0.1.0"
+}

@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "CAKE QoS Exporter",
+        "description": "Connect to the cake-stats-exporter running on your CAKE bridge.",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the CAKE stats exporter. Check host and port."
+    },
+    "abort": {
+      "already_configured": "This exporter is already configured."
+    }
+  }
+}
