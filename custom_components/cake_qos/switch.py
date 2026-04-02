@@ -63,6 +63,15 @@ class CakeAutorateSwitch(CoordinatorEntity[CakeQosCoordinator], SwitchEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Stop cake-autorate."""
+        """Stop cake-autorate and apply static rates."""
         await self.coordinator.client.autorate_stop()
+        # Apply persisted static rates so CAKE doesn't stay at whatever
+        # bandwidth autorate last set.
+        try:
+            rates = self.coordinator.data.get("static_rates", {}) if self.coordinator.data else {}
+            dl = rates.get("dl_rate_mbit", 400)
+            ul = rates.get("ul_rate_mbit", 80)
+            await self.coordinator.client.set_static_rates(dl, ul)
+        except Exception:
+            _LOGGER.warning("Failed to apply static rates after stopping autorate")
         await self.coordinator.async_request_refresh()

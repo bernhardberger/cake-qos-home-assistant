@@ -54,6 +54,17 @@ def _cake(direction: str, key: str) -> Callable[[dict], Any]:
     return fn
 
 
+def _shaper_rate(direction: str) -> Callable[[dict], Any]:
+    """Extract the live CAKE shaper rate from tc (ground truth).
+
+    tc bandwidth is what's actually applied to the qdisc — autorate
+    SUMMARY values are a stale log artifact and unreliable for display.
+    """
+    def fn(data: dict) -> Any:
+        return data.get("cake", {}).get(direction, {}).get("bandwidth_mbit")
+    return fn
+
+
 def _cake_tin(direction: str, key: str) -> Callable[[dict], Any]:
     """Extract a value from the cake tin (flow stats)."""
     def fn(data: dict) -> Any:
@@ -82,8 +93,8 @@ SENSOR_DESCRIPTIONS: tuple[CakeQosSensorDescription, ...] = (
         icon="mdi:download",
         native_unit_of_measurement="Mbit/s",
         state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=0,
-        value_fn=_autorate("cake_dl_rate_mbit"),
+        suggested_display_precision=1,
+        value_fn=_shaper_rate("download"),
     ),
     CakeQosSensorDescription(
         key="cake_ul_rate",
@@ -91,8 +102,8 @@ SENSOR_DESCRIPTIONS: tuple[CakeQosSensorDescription, ...] = (
         icon="mdi:upload",
         native_unit_of_measurement="Mbit/s",
         state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=0,
-        value_fn=_autorate("cake_ul_rate_mbit"),
+        suggested_display_precision=1,
+        value_fn=_shaper_rate("upload"),
     ),
     # ── Achieved throughput ─────────────────────────────────────────────
     CakeQosSensorDescription(
