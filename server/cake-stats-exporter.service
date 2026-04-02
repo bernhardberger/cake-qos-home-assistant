@@ -1,0 +1,17 @@
+[Unit]
+Description=CAKE QoS stats exporter (HTTP JSON API)
+After=network-online.target cake-autorate.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/cake-stats-exporter.py
+Restart=on-failure
+RestartSec=5
+
+# Hardening (light — LXC namespaces limit what ProtectSystem can do)
+NoNewPrivileges=yes
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
