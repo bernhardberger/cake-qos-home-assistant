@@ -44,6 +44,13 @@ class CakeClient:
         """POST /config — update autorate tunables."""
         return await self._post("/config", json=changes)
 
+    async def set_static_rates(self, dl_rate_mbit: float, ul_rate_mbit: float) -> dict:
+        """POST /cake/rates — set static CAKE shaper rates."""
+        return await self._post(
+            "/cake/rates",
+            json={"dl_rate_mbit": dl_rate_mbit, "ul_rate_mbit": ul_rate_mbit},
+        )
+
     async def health_check(self) -> bool:
         """GET /health — returns True if exporter is reachable."""
         try:
