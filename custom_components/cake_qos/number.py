@@ -190,7 +190,6 @@ class CakeQosStaticRateNumber(CoordinatorEntity[CakeQosCoordinator], NumberEntit
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._pending_value: float | None = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -200,35 +199,30 @@ class CakeQosStaticRateNumber(CoordinatorEntity[CakeQosCoordinator], NumberEntit
 
     @property
     def native_value(self) -> float | None:
-        """Read current CAKE bandwidth from tc stats."""
-        if self._pending_value is not None:
-            return self._pending_value
+        """Read persisted static rate setting from exporter."""
         if not self.coordinator.data:
             return None
-        cake = self.coordinator.data.get("cake", {})
-        direction = "download" if "dl" in self.entity_description.key else "upload"
-        return cake.get(direction, {}).get("bandwidth_mbit")
+        rates = self.coordinator.data.get("static_rates", {})
+        return rates.get(self.entity_description.config_key)
 
     async def async_set_native_value(self, value: float) -> None:
         """Set static CAKE rates via apply-cake.sh.
 
         We need both DL and UL rates for the tc call. Read the current
-        value for the other direction from coordinator data.
+        value for the other direction from the persisted static rates.
         """
         desc = self.entity_description
-        cake = self.coordinator.data.get("cake", {}) if self.coordinator.data else {}
+        rates = self.coordinator.data.get("static_rates", {}) if self.coordinator.data else {}
 
         if "dl" in desc.key:
             dl = value
-            ul = cake.get("upload", {}).get("bandwidth_mbit", 80)
+            ul = rates.get("ul_rate_mbit", 80)
         else:
-            dl = cake.get("download", {}).get("bandwidth_mbit", 400)
+            dl = rates.get("dl_rate_mbit", 400)
             ul = value
 
         result = await self.coordinator.client.set_static_rates(dl, ul)
         if result.get("status") == "ok":
-            self._pending_value = value
             await self.coordinator.async_request_refresh()
-            self._pending_value = None
         else:
             _LOGGER.error("Failed to set static rate: %s", result)
