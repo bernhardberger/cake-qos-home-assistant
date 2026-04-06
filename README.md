@@ -1,26 +1,31 @@
 # CAKE QoS — Home Assistant Integration
 
-Monitor and control [CAKE](https://www.bufferbloat.net/projects/codel/wiki/Cake/) QoS with [cake-autorate](https://github.com/lynxthecat/cake-autorate) from Home Assistant.
+Control [CAKE](https://www.bufferbloat.net/projects/codel/wiki/Cake/) QoS and [cake-autorate](https://github.com/lynxthecat/cake-autorate) from Home Assistant.
 
-Designed for **OpenWrt routers** running CAKE natively via SQM. Communicates with a lightweight HTTP exporter (`cake-stats-exporter`) running on the router.
+Designed for **OpenWrt routers** running CAKE natively via SQM. Sensors are provided by cake-autorate's built-in [MQTT publisher](https://github.com/lynxthecat/cake-autorate/blob/master/mqtt-publisher.sh) via HA auto-discovery; this integration provides **control entities only** (switch, number, button) via a lightweight HTTP exporter on the router.
 
 ---
 
-## Architecture
+## Architecture (v0.6.0)
 
 ```
 Internet / ISP
       │
-  eth1 [CAKE↑ — upload shaper, egress]
+  eth1 [CAKE upload shaper]
       │
-  OpenWrt router  ◄── cake-stats-exporter :9101
+  OpenWrt router
+  ├── cake-autorate          ──→ /var/log/cake-autorate.primary.log
+  ├── mqtt-publisher.sh      ──→ Mosquitto (HA add-on) ──→ HA MQTT sensors (auto-discovery)
+  └── cake-stats-exporter :9101  ──→ HA custom integration (control entities)
       │
-  ifb4eth1 [CAKE↓ — download shaper, ingress via IFB]
+  ifb4eth1 [CAKE download shaper]
       │
 LAN clients
 ```
 
-Traffic is shaped at the WAN interface (`eth1` egress for upload) and via an IFB device (`ifb4eth1` egress for download). `cake-autorate` continuously adjusts rates based on measured OWD latency.
+**Monitoring** (rates, latency, load conditions, CPU) comes from MQTT auto-discovery — 13 sensors published by `mqtt-publisher.sh`, zero configuration in HA.
+
+**Control** (start/stop autorate, adjust rates & thresholds, restart) comes from this custom integration, which talks to `cake-stats-exporter` over HTTP.
 
 ---
 
@@ -28,17 +33,94 @@ Traffic is shaped at the WAN interface (`eth1` egress for upload) and via an IFB
 
 - Home Assistant 2024.1+
 - HACS
+- **Mosquitto MQTT broker** (HA add-on or external)
 - OpenWrt router with:
   - CAKE/SQM enabled (`kmod-sched-cake`, `sqm-scripts`)
   - [cake-autorate](https://github.com/lynxthecat/cake-autorate) installed
+  - `mosquitto-client-nossl` (for `mqtt-publisher.sh`)
   - Python 3 (`apk add python3` on OpenWrt 24+)
   - The [cake-stats-exporter](#server-setup) running on the router
 
 ---
 
-## Server Setup
+## MQTT Sensor Setup
 
-The exporter lives in [`server/`](server/). Deploy it to your OpenWrt router.
+cake-autorate includes `mqtt-publisher.sh` which tails the autorate log and publishes metrics via MQTT with HA auto-discovery. No custom integration needed for sensors.
+
+### 1. Install MQTT on your HA instance
+
+Install the **Mosquitto broker** add-on from the HA add-on store, or configure an external MQTT broker.
+
+### 2. Create an HA user for MQTT
+
+Create a local HA user (e.g. `openwrt`) for the MQTT publisher to authenticate with.
+
+### 3. Install mosquitto client on OpenWrt
+
+```sh
+apk add mosquitto-client-nossl
+```
+
+### 4. Configure mqtt-publisher.sh
+
+Edit your cake-autorate config (`config.primary.sh`):
+
+```sh
+MQTT_HOST="192.168.8.5"    # your HA IP
+MQTT_PORT="1883"
+MQTT_USER="openwrt"
+MQTT_PASS="your_password"
+```
+
+### 5. Enable mqtt-publisher.sh at boot
+
+```sh
+cat > /etc/init.d/mqtt-publisher << 'INITEOF'
+#!/bin/sh /etc/rc.common
+START=99
+USE_PROCD=1
+start_service() {
+    procd_open_instance
+    procd_set_param command /root/cake-autorate/mqtt-publisher.sh
+    procd_set_param respawn 3600 5 0
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+}
+INITEOF
+chmod +x /etc/init.d/mqtt-publisher
+/etc/init.d/mqtt-publisher enable
+/etc/init.d/mqtt-publisher start
+```
+
+### MQTT Sensors (auto-discovered)
+
+Once running, these sensors appear automatically in HA:
+
+| Entity | Description | Unit |
+|--------|-------------|------|
+| DL achieved rate | Download throughput | kbps |
+| UL achieved rate | Upload throughput | kbps |
+| CAKE DL shaper rate | Applied download shaper | kbps |
+| CAKE UL shaper rate | Applied upload shaper | kbps |
+| DL delay sum | Download delay measurement | us |
+| UL delay sum | Upload delay measurement | us |
+| DL OWD delta | Download OWD delta | us |
+| UL OWD delta | Upload OWD delta | us |
+| DL load condition | Download load state | — |
+| UL load condition | Upload load state | — |
+| CPU core 0–N | Per-core CPU usage | % |
+
+> **Tip:** MQTT rates are in kbps. Use HA template sensors to convert to Mbit/s:
+> ```yaml
+> {{ (states('sensor.cake_autorate_primary_cake_dl_shaper_rate') | float / 1000) | round(1) }}
+> ```
+
+---
+
+## Server Setup (Control Exporter)
+
+The HTTP exporter lives in [`server/`](server/). It provides the control API used by this integration's switch, number, and button entities.
 
 ### Prerequisites
 
@@ -82,17 +164,7 @@ All paths and the listen address can be overridden via `/etc/cake-stats-exporter
 | `CAKE_SERVICE_INIT` | `/etc/init.d/cake-autorate` | cake-autorate init.d script |
 | `CAKE_WAN_IFACE` | `eth1` | WAN interface (for apply-cake.sh) |
 
-Example `/etc/cake-stats-exporter.conf`:
-```sh
-CAKE_LISTEN_ADDR="192.168.1.1"
-CAKE_WAN_IFACE="eth0"
-```
-
-### Non-OpenWrt (systemd)
-
-If you're running on a Linux host with systemd, use the provided `cake-stats-exporter.service` unit instead of the init.d script. Adjust the `CAKE_*` environment variables in the unit to match your paths.
-
-### API
+### Control API
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -118,29 +190,9 @@ If you're running on a Linux host with systemd, use the provided `cake-stats-exp
 
 ---
 
-## Entities
+## Entities (Control Only)
 
-### Sensors (17)
-
-| Entity | Description | Unit |
-|--------|-------------|------|
-| Download shaper rate | Live CAKE bandwidth from `tc` (ground truth) | Mbit/s |
-| Upload shaper rate | Live CAKE bandwidth from `tc` (ground truth) | Mbit/s |
-| Download achieved | Autorate measured throughput | Mbit/s |
-| Upload achieved | Autorate measured throughput | Mbit/s |
-| Download load | Load condition (Idle / Low / Waiting / High) | — |
-| Upload load | Load condition (Idle / Low / Waiting / High) | — |
-| Download delay | CAKE tin avg queue delay | µs |
-| Upload delay | CAKE tin avg queue delay | µs |
-| Download latency delta | OWD delta from autorate | µs |
-| Upload latency delta | OWD delta from autorate | µs |
-| Download drops | CAKE drop counter | — |
-| Upload drops | CAKE drop counter | — |
-| Download sparse flows | CAKE flow count | — |
-| Download bulk flows | CAKE flow count | — |
-| Download bandwidth | Raw tc bandwidth_mbit (diagnostic) | Mbit/s |
-| Upload bandwidth | Raw tc bandwidth_mbit (diagnostic) | Mbit/s |
-| Autorate service | Service running state | — |
+> **Note:** Monitoring sensors (rates, latency, load, CPU) are provided by MQTT auto-discovery — see [MQTT Sensor Setup](#mqtt-sensor-setup) above. This integration provides control entities only.
 
 ### Switch (1)
 
@@ -182,8 +234,30 @@ Shown on the dashboard only when autorate is **off**:
 
 ## Notes
 
-- Poll interval: 10 seconds (DataUpdateCoordinator)
-- Shaper rate sensors read directly from `tc` qdisc stats — not from autorate log — so they always reflect the currently applied rate
+- Control poll interval: 30 seconds (DataUpdateCoordinator) — only fetches service state and config for control entities
+- MQTT sensors update in real-time (every ~2 seconds from mqtt-publisher.sh)
 - Static rates are persisted to `/root/cake-stats/static-rates.json` on the router (overlay filesystem — survives reboot, lost on sysupgrade)
 - `apply-cake.sh` uses `tc qdisc replace` — safe to run while traffic is flowing
 - Service control uses procd (`/etc/init.d/cake-autorate`) — no systemd on OpenWrt
+
+## Changelog
+
+### v0.6.0
+
+- **Breaking:** Removed all 17 sensor entities — replaced by MQTT auto-discovery via cake-autorate's `mqtt-publisher.sh`
+- Removed options flow (scan_interval no longer configurable)
+- Hardcoded poll interval to 30s (control entities only)
+- Updated strings: "CAKE bridge" → "router"
+
+### v0.5.1
+
+- Configurable poll interval via options flow (2–60s)
+
+### v0.5.0
+
+- Migrated from LXC cake-bridge to OpenWrt native CAKE
+- Fixed partial trailing log line in autorate tail parser
+
+### v0.4.0
+
+- Initial public release with HTTP exporter
