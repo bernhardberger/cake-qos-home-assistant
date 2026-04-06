@@ -10,7 +10,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import CakeApiError, CakeClient
-from .const import DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,12 +17,14 @@ _LOGGER = logging.getLogger(__name__)
 class CakeQosCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Fetch stats from the cake-stats-exporter."""
 
-    def __init__(self, hass: HomeAssistant, client: CakeClient) -> None:
+    def __init__(
+        self, hass: HomeAssistant, client: CakeClient, scan_interval: int
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name="CAKE QoS",
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=scan_interval),
         )
         self.client = client
 
