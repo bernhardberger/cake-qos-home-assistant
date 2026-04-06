@@ -275,12 +275,14 @@ class CakeQosSensor(CoordinatorEntity[CakeQosCoordinator], SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
+        host = self.coordinator.config_entry.data.get("host", "")
+        port = self.coordinator.config_entry.data.get("port", 9101)
         return DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name="CAKE QoS Bridge",
+            name="CAKE QoS",
             manufacturer="cake-autorate",
-            model="CAKE Bridge LXC",
-            configuration_url="http://192.168.8.241:9101/stats",
+            model="cake-stats-exporter",
+            configuration_url=f"http://{host}:{port}/stats",
         )
 
     @property

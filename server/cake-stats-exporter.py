@@ -15,24 +15,48 @@ Endpoints:
     POST /config          — update autorate config (JSON body)
     POST /cake/rates      — set static CAKE rates (dl_rate_mbit, ul_rate_mbit)
 
-Listens on the br0 bridge IP (192.168.8.241:9101) — LAN-only.
-Pair with nftables to restrict to 192.168.8.0/24 for defense-in-depth.
+Configuration via environment variables (all optional):
+    CAKE_LISTEN_ADDR      — bind address (default: 0.0.0.0)
+    CAKE_LISTEN_PORT      — bind port (default: 9101)
+    CAKE_AUTORATE_LOG     — path to cake-autorate log
+                            (default: /var/log/cake-autorate.primary.log)
+    CAKE_AUTORATE_CONFIG  — path to cake-autorate config
+                            (default: /root/cake-autorate/config.primary.sh)
+    CAKE_APPLY_SCRIPT     — path to apply-cake.sh
+                            (default: /usr/local/bin/apply-cake.sh)
+    CAKE_STATIC_RATES     — path to persisted static rates JSON
+                            (default: /root/cake-stats/static-rates.json)
+    CAKE_SERVICE_INIT     — path to init.d/service script for cake-autorate
+                            (default: /etc/init.d/cake-autorate)
 """
 
 import json
+import os
 import re
 import subprocess
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
-AUTORATE_LOG = Path("/var/log/cake-autorate/cake-autorate.primary.log")
-AUTORATE_CONFIG = Path("/etc/cake-autorate/config.primary.sh")
-APPLY_CAKE_SCRIPT = Path("/usr/local/bin/apply-cake.sh")
-STATIC_RATES_FILE = Path("/var/lib/cake-stats/static-rates.json")
-AUTORATE_SERVICE = "cake-autorate.service"
-LISTEN_ADDR = "192.168.8.241"
-LISTEN_PORT = 9101
+# -- Configuration (env-var overrides for portability) --
+
+AUTORATE_LOG = Path(os.environ.get(
+    "CAKE_AUTORATE_LOG", "/var/log/cake-autorate.primary.log"
+))
+AUTORATE_CONFIG = Path(os.environ.get(
+    "CAKE_AUTORATE_CONFIG", "/root/cake-autorate/config.primary.sh"
+))
+APPLY_CAKE_SCRIPT = Path(os.environ.get(
+    "CAKE_APPLY_SCRIPT", "/usr/local/bin/apply-cake.sh"
+))
+STATIC_RATES_FILE = Path(os.environ.get(
+    "CAKE_STATIC_RATES", "/root/cake-stats/static-rates.json"
+))
+AUTORATE_SERVICE_INIT = os.environ.get(
+    "CAKE_SERVICE_INIT", "/etc/init.d/cake-autorate"
+)
+LISTEN_ADDR = os.environ.get("CAKE_LISTEN_ADDR", "0.0.0.0")
+LISTEN_PORT = int(os.environ.get("CAKE_LISTEN_PORT", "9101"))
 
 # Static rate limits (Mbit/s)
 STATIC_DL_RANGE = (10, 600)
@@ -156,25 +180,31 @@ def get_autorate_state() -> dict:
     return out
 
 
-# -- autorate service control --
+# -- autorate service control (procd / init.d) --
 
 def get_service_state() -> dict:
-    """Get cake-autorate systemd service state."""
+    """Get cake-autorate service state via init.d script.
+
+    Uses pgrep to check running state (procd status exit code is unreliable),
+    and init.d 'enabled' for boot persistence.
+    """
+    # Running check: look for launcher.sh process
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", AUTORATE_SERVICE],
+            ["pgrep", "-f", "launcher.sh"],
             capture_output=True, text=True, timeout=5,
         )
-        active = result.stdout.strip()
+        active = "active" if result.returncode == 0 else "inactive"
     except Exception:
         active = "unknown"
 
+    # Enabled check: init.d enabled exits 0 if enabled, non-zero if not
     try:
         result = subprocess.run(
-            ["systemctl", "is-enabled", AUTORATE_SERVICE],
+            [AUTORATE_SERVICE_INIT, "enabled"],
             capture_output=True, text=True, timeout=5,
         )
-        enabled = result.stdout.strip()
+        enabled = "enabled" if result.returncode == 0 else "disabled"
     except Exception:
         enabled = "unknown"
 
@@ -182,16 +212,16 @@ def get_service_state() -> dict:
 
 
 def service_action(action: str) -> dict:
-    """Start/stop/restart cake-autorate."""
+    """Start/stop/restart cake-autorate via init.d."""
     if action not in ("start", "stop", "restart"):
         return {"error": f"invalid action: {action}"}
     try:
         result = subprocess.run(
-            ["systemctl", action, AUTORATE_SERVICE],
+            [AUTORATE_SERVICE_INIT, action],
             capture_output=True, text=True, timeout=15,
         )
         if result.returncode != 0:
-            return {"error": result.stderr.strip(), "returncode": result.returncode}
+            return {"error": result.stderr.strip() or result.stdout.strip(), "returncode": result.returncode}
         return {"status": "ok", "action": action}
     except Exception as e:
         return {"error": str(e)}
