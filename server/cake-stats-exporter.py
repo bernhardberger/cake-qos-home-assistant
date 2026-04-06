@@ -146,6 +146,13 @@ def get_autorate_state() -> dict:
     except Exception:
         return {"error": "failed to read autorate log"}
 
+    # Discard any partial trailing line — log is written multiple times/sec
+    # so the tail chunk almost always ends mid-line, and keeping the partial
+    # line as `last_summary` causes the len(parts) >= 13 check to fail.
+    newline_pos = tail.rfind("\n")
+    if newline_pos != -1:
+        tail = tail[:newline_pos]
+
     for line in tail.splitlines():
         if line.startswith("SUMMARY;"):
             last_summary = line
