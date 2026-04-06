@@ -1,4 +1,10 @@
-"""DataUpdateCoordinator for CAKE QoS."""
+"""DataUpdateCoordinator for CAKE QoS.
+
+Polls the cake-stats-exporter for service state and config values
+used by control entities (switch, number, button).  Monitoring
+sensors are handled by MQTT auto-discovery — this coordinator does
+not need to run at high frequency.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +21,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class CakeQosCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Fetch stats from the cake-stats-exporter."""
+    """Fetch service state and config from the cake-stats-exporter."""
 
     def __init__(
         self, hass: HomeAssistant, client: CakeClient, scan_interval: int

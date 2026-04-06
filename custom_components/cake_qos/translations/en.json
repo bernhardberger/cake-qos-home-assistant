@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "CAKE QoS Exporter",
-        "description": "Connect to the cake-stats-exporter running on your CAKE bridge.",
+        "description": "Connect to the cake-stats-exporter running on your router.",
         "data": {
           "host": "Host",
           "port": "Port"
