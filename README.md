@@ -1,3 +1,5 @@
+> **Retired.** cake-autorate now ships [`mqtt-publisher.sh`](https://github.com/lynxthecat/cake-autorate/blob/master/mqtt-publisher.sh), which sends all the CAKE sensors to Home Assistant through MQTT auto-discovery. That covers what most people want from this repo. What's left here are control entities and an HTTP exporter that runs on the router without authentication. I don't use either anymore, so this repo is archived and kept for reference.
+
 # CAKE QoS — Home Assistant Integration
 
 Control [CAKE](https://www.bufferbloat.net/projects/codel/wiki/Cake/) QoS and [cake-autorate](https://github.com/lynxthecat/cake-autorate) from Home Assistant.
